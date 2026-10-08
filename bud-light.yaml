@@ -1,0 +1,139 @@
+esphome:
+  name: bud-light
+  friendly_name: bud-light
+
+esp32:
+  variant: ESP32C2
+  framework:
+    type: esp-idf
+    sdkconfig_options:
+      CONFIG_XTAL_FREQ_26: y
+
+logger:
+  
+ota:
+  - platform: esphome
+
+wifi:
+  id: wifi_id
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Bud-Light Hotspot"
+    password: "Budweiser"
+
+captive_portal:
+
+web_server:
+  version: 1
+
+output:
+  - platform: gpio
+    pin: 0
+    id: gpio_out
+    inverted: true
+
+script:
+  - id: pulse_gpio
+    then:
+      - output.turn_on: gpio_out
+      - delay: 0.1s
+      - output.turn_off: gpio_out
+  - id: display_on
+    then: 
+      - lambda: |-
+          id(oled1).turn_on();
+      - display.page.show: info_pg
+      - component.update: oled1
+  - id: display_off
+    then: 
+      - display.page.show: blank_pg
+      - component.update: oled1
+      - lambda: |-
+          id(oled1).turn_off();
+          
+
+button:
+  - platform: factory_reset
+    name: "Factory Reset (Forget Wi-Fi)"
+    id: factory_reset_btn
+
+  - platform: template
+    name: "Button"
+    id: btn
+    on_press:
+      - script.execute: pulse_gpio
+
+#curl -X POST -d "" http://<ip_address>/button/Button/press
+
+#button active low on io6
+#sda io10
+#scl io18
+
+text_sensor:
+  - platform: wifi_info
+    ip_address: 
+      name: IP address
+      id: ipaddr_text
+      #internal: true
+      #address_0: 
+      #  id: ipaddr
+      #  name: Primary IP address
+    ssid:
+      #name: SSID
+      id: ssid_text
+      internal: true
+
+#sda io10
+#scl io18
+
+binary_sensor:
+  - platform: gpio
+    id: input_btn
+    pin: 
+      number: 6
+      mode: 
+        input: true
+        pullup: true
+      inverted: true  # active-low
+    on_press:
+      then:
+        - script.execute: display_on
+    on_release:
+      then:
+        - delay: 1s
+        - script.execute: display_off
+
+i2c:                                                                                                                                                                                                        
+  sda: 10
+  scl: 18
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x32"
+    # "SH1106 128x32"  "SSD1305 128x32"
+    id: oled1
+    update_interval: never
+    pages: 
+      - id: info_pg
+        lambda: |-
+          if (id(wifi_id).is_connected())
+          {
+            it.printf(0, 0, id(my_font), "%s", id(ssid_text).state.c_str());
+            it.printf(0, 16, id(my_font), "%s", id(ipaddr_text).state.c_str());
+          }
+          else
+          {
+            it.print(0, 0, id(my_font), "Bud-Light Hotspot");
+            it.print(0, 16, id(my_font), "passwd:\"Budweiser\"");
+          }
+      - id: blank_pg
+        lambda: |-
+          //
+          
+font:
+  - file: "gfonts://Roboto Mono"
+    id: my_font
+    size: 12
